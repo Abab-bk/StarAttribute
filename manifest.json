@@ -1,0 +1,10 @@
+﻿{
+  "Name": "StarAttribute",
+  "Author": "Flower",
+  "Version": "0.0.1",
+  "Description": "Add attribute to something.",
+  "UniqueID": "Flower.StarAttribute",
+  "EntryDll": "StarAttribute.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}
