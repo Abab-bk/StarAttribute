@@ -5,12 +5,9 @@ namespace StarAttribute;
 public class AttributeData
 {
     private List<AttributeStat> _stats = new ();
-
-    public Item Item;
     
-    public AttributeData(Item item)
+    public AttributeData()
     {
-        Item = item;
         for (int i = 0; i < Random.Shared.Next(1, 6); i++)
         {
             _stats.Add(new AttributeStat(

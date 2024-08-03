@@ -5,6 +5,7 @@ using StardewModdingAPI.Events;
 using StardewValley;
 using StardewModdingAPI.Utilities;
 using StardewValley.Menus;
+using StardewValley.Objects;
 
 namespace StarAttribute;
 
@@ -19,23 +20,45 @@ public class ModEntry : Mod
     private const int Padding = 5;
     private readonly Vector2 _tooltipOffset = new(Game1.tileSize / 2f);
     
-    private readonly Dictionary<Item, AttributeData> _items = new();
+    private SaveData _saveData = new();
 
     public override void Entry(IModHelper helper)
     {
         Helper.Events.Player.InventoryChanged += OnInventoryChanged;
         Helper.Events.Display.RenderedHud += OnRenderedHud;
+        Helper.Events.Display.RenderedActiveMenu += OnRenderedActiveMenu;
         Helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
+        Helper.Events.GameLoop.Saving += Save;
+        Helper.Events.GameLoop.SaveLoaded += (_, _) =>
+        {
+            if (Helper.Data.ReadSaveData<SaveData>("Items") == null) return;
+            _saveData = Helper.Data.ReadSaveData<SaveData>("Items")!;
+            ActiveAll();
+        };
     }
-    
+
+    private void Save(object? sender, SavingEventArgs e)
+    {
+        Helper.Data.WriteSaveData("Items", _saveData);
+    }
+
+    private void ActiveAll()
+    {
+        foreach (var item in _saveData.Items)
+        {
+            item.Value.Active();
+        }
+    }
+
     private void OnInventoryChanged(object? sender, InventoryChangedEventArgs e)
     {
         foreach (var item in e.Added)
         {
-            if (_items.ContainsKey(item)) continue;
+            if (item is not Clothing) continue;
+            if (_saveData.Items.ContainsKey(item)) continue;
 
-            var attribute = new AttributeData(item);
-            _items.Add(item, attribute);
+            var attribute = new AttributeData();
+            _saveData.Items.Add(item, attribute);
             Monitor.Log(
                 $"[StarAttribute] Add item {item.DisplayName} with {attribute.GetDisplayDesc()}",
                 LogLevel.Debug);
@@ -43,18 +66,27 @@ public class ModEntry : Mod
 
         foreach (var item in e.Removed)
         {
-            if (_items.ContainsKey(item))
+            if (item is not Clothing) continue;
+            if (_saveData.Items.ContainsKey(item))
             {
-                var attribute = _items[item];
+                var attribute = _saveData.Items[item];
                 attribute.DeActive();
-                _items.Remove(item);
+                _saveData.Items.Remove(item);
                 Monitor.Log(
                     $"[StarAttribute] Remove item {item.DisplayName} with {attribute.GetDisplayDesc()}",
                     LogLevel.Debug);
             }
         }
     }
-    
+
+    private void OnRenderedActiveMenu(object? sender, RenderedActiveMenuEventArgs e)
+    {
+        Item? item = GetItemFromMenu(Game1.activeClickableMenu);
+        if (item == null) return;
+        
+        DrawTooltip(Game1.spriteBatch, Game1.smallFont, item);
+    }
+
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
     {
         // cache the toolbar & slots
@@ -76,6 +108,26 @@ public class ModEntry : Mod
     }
 
     
+    private Item? GetItemFromMenu(IClickableMenu menu)
+    {
+        // game menu
+        if (menu is GameMenu gameMenu)
+        {
+            IClickableMenu page = this.Helper.Reflection.GetField<List<IClickableMenu>>(gameMenu, "pages").GetValue()[gameMenu.currentTab];
+            if (page is InventoryPage)
+                return Helper.Reflection.GetField<Item>(page, "hoveredItem").GetValue();
+            if (page is CraftingPage)
+                return Helper.Reflection.GetField<Item>(page, "hoverItem").GetValue();
+        }
+
+        // from inventory UI
+        else if (menu is MenuWithInventory inventoryMenu)
+            return inventoryMenu.hoveredItem;
+
+        return null;
+    }
+    
+    
     private void OnRenderedHud(object? sender, RenderedHudEventArgs e)
     {
         if (!Context.IsPlayerFree) return;
@@ -89,7 +141,7 @@ public class ModEntry : Mod
     
     private void DrawTooltip(SpriteBatch spriteBatch, SpriteFont font, Item item)
         {
-            if (!_items.TryGetValue(item, out var data)) return;
+            if (!_saveData.Items.TryGetValue(item, out var data)) return;
             
             // basic measurements
             const int borderSize = TooltipBorderSize;
